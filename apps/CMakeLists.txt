@@ -15,3 +15,5 @@ endif()
 if(UIPC_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif()
+
+add_subdirectory(15763_project)

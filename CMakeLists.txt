@@ -21,8 +21,8 @@ option(UIPC_BUILD_GUI "Build GUI, turn it off if you're server only" OFF)
 option(UIPC_BUILD_PYBIND "Build pyuipc" OFF)
 option(UIPC_BUILD_PYTHON_WHEEL "Wheel build mode for Python post-build helper" OFF)
 option(UIPC_BUILD_EXAMPLES "Build examples" ON)
-option(UIPC_BUILD_TESTS "Build tests" ON)
-option(UIPC_BUILD_BENCHMARKS "Build benchmarks" ON)
+option(UIPC_BUILD_TESTS "Build tests" OFF)
+option(UIPC_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(UIPC_DEV_MODE "Enable developer mode" OFF)
 option(UIPC_WITH_USD_SUPPORT "Build with Universal Scene Description (USD) support" OFF)
 option(UIPC_WITH_VDB_SUPPORT "Build with Volumetric DataBase (VDB) support" OFF)
@@ -66,6 +66,8 @@ endif()
 if(UIPC_BUILD_PYTHON_WHEEL)
     set(UIPC_BUILD_PYBIND ON)
 endif()
+
+set(CMAKE_TOOLCHAIN_FILE "~/Toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 # =========================================================================
 # Show Logo and Options

@@ -1,22 +1,115 @@
 #include <app/asset_dir.h>
 #include <uipc/uipc.h>
 #include <uipc/constitution/affine_body_constitution.h>
+#include <cmath>
+#include <numbers>
 
-int main()
-{
-    using namespace uipc;
-    using namespace uipc::core;
-    using namespace uipc::geometry;
-    using namespace uipc::constitution;
-    namespace fs = std::filesystem;
+using namespace uipc;
+using namespace uipc::core;
+using namespace uipc::geometry;
+using namespace uipc::constitution;
+namespace fs = std::filesystem;
 
-    // Engine engine{"none"};
+Float pi = std::numbers::pi_v<Float>;
+
+// row 0 is special because it is the center, shared across all sectors
+SizeT cylinder_vertex_index(SizeT layer, SizeT row, SizeT sector, SizeT i, SizeT num_disk_vertices) {
+    SizeT layer_offset = layer * num_disk_vertices;
+    SizeT row_offset = row == 0 ? 0 : 1 + 6 * row * (row - 1) / 2;
+    SizeT sector_offset = sector * row;
+
+    return layer_offset + row_offset + sector_offset + i;
+}
+
+SimplicialComplex cylinder(Float radius, Float height, SizeT radius_subdivisions, SizeT height_subdivisions) {
+    SizeT num_disk_vertices = 1 + 6 * radius_subdivisions * (radius_subdivisions + 1) / 2;
+    SizeT num_disk_faces = 6 * radius_subdivisions * radius_subdivisions;
+
+    vector<Vector2> disk_vertices(num_disk_vertices);
+
+    // put the middle vertex at the start of the array
+    disk_vertices[0] = Vector2{0, 0};
+
+    // insert all vertices except the middle one
+    for (SizeT row = 1; row <= radius_subdivisions; row++) {
+        Float r = (Float)row / radius_subdivisions * radius;
+        
+        for (SizeT sector = 0; sector < 6; sector++) {
+            for (SizeT i = 0; i < row; i++) {
+                Float theta = (sector + (Float)i / row) * pi / 3;
+                Float x = r * std::cos(theta);
+                Float y = r * std::sin(theta);
+
+                disk_vertices[cylinder_vertex_index(0, row, sector, i, num_disk_vertices)] = Vector2{x, y};
+            }
+        }
+    }
+
+    vector<Vector3> Vs(num_disk_vertices * (height_subdivisions + 1));
+    vector<Vector4i> Ts(3 * num_disk_faces * height_subdivisions);
+
+    for (SizeT layer = 0; layer <= height_subdivisions; layer++) {
+        Float z = -height / 2 + layer * height;
+
+        // populate the vertices
+        for (SizeT k = 0; k < num_disk_vertices; k++) {
+            Vector2 xy = disk_vertices[k];
+            Vs[layer * num_disk_vertices + k] = Vector3{xy.x, xy.y, z};
+        }
+
+        // only populate the tets after the first layer
+        if (layer > 0) {
+            for (SizeT row = 0; row < radius_subdivisions - 1; row++) {
+                for (SizeT sector = 0; sector < 6; sector++) {
+
+                    // populate the pairs of triangles between each row
+                    for (SizeT i = 0; i < row; i++) {
+                        // controls the alternating edges in two dimensions
+                        bool lean_forward;
+                        bool lean_left;
+
+                        SizeT offset; // TODO
+
+                        // first triangle
+                        Ts[offset] = Vector4i{
+                            cylinder_vertex_index(layer - 1, row, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + 1, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + 1, sector, i + 1, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward && lean_left, num_disk_vertices)
+                        };
+                        Ts[offset + 1] = Vector4i{
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + 1, sector, i + lean_left, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices), // TODO
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward && lean_left, num_disk_vertices)
+                        };
+                        Ts[offset + 2] = Vector4i{
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward && !lean_left, num_disk_vertices),
+                            cylinder_vertex_index(layer, row, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + 1, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices)
+                        };
+
+                        // second triangle
+                    }
+
+                    // populate the last triangle in the row of the sector
+
+                }
+            }
+        }
+    }
+
+    return tetmesh(Vs, Ts);
+}
+
+int main() {
     Engine engine{"cuda"};
 
     World world{engine};
-    auto  config      = Scene::default_config();
+    auto  config = Scene::default_config();
     config["gravity"] = Vector3{0, -9.8, 0};
-    config["dt"]      = 0.01_s;
+    config["dt"] = 0.01_s;
 
     Scene scene{config};
     {
@@ -63,7 +156,7 @@ int main()
             auto is_fixed = mesh2.instances().find<IndexT>(builtin::is_fixed);
             // set the first instance to be fixed
             auto is_fixed_view = view(*is_fixed);
-            is_fixed_view[0]   = 1;
+            is_fixed_view[0] = 1;
         }
 
 

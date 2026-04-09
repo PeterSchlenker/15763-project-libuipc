@@ -3,6 +3,7 @@
 #include <uipc/constitution/affine_body_constitution.h>
 #include <cmath>
 #include <numbers>
+#include <iostream>
 
 using namespace uipc;
 using namespace uipc::core;
@@ -54,47 +55,99 @@ SimplicialComplex cylinder(Float radius, Float height, SizeT radius_subdivisions
         // populate the vertices
         for (SizeT k = 0; k < num_disk_vertices; k++) {
             Vector2 xy = disk_vertices[k];
-            Vs[layer * num_disk_vertices + k] = Vector3{xy.x, xy.y, z};
+            Vs[layer * num_disk_vertices + k] = Vector3{xy.x(), xy.y(), z};
         }
 
         // only populate the tets after the first layer
         if (layer > 0) {
-            for (SizeT row = 0; row < radius_subdivisions - 1; row++) {
+            for (SizeT row = 0; row <= radius_subdivisions - 1; row++) {
                 for (SizeT sector = 0; sector < 6; sector++) {
 
-                    // populate the pairs of triangles between each row
+                    // populate the pairs of triangular prisms between each row
                     for (SizeT i = 0; i < row; i++) {
                         // controls the alternating edges in two dimensions
-                        bool lean_forward;
-                        bool lean_left;
+                        // each prism has 4 configurations, determined by these variables
+                        bool lean_forward = (row % 2 == 0) ^ (layer % 2 == 0);
+                        bool lean_left_top = (i % 2 == 0) ^ (row % 2 == 0 && sector % 2 != 0) ^ (layer % 2 == 0);
+                        bool lean_left_bottom = (i % 2 == 0) ^ (row % 2 != 0 && sector % 2 != 0) ^ (layer % 2 == 0);
 
-                        SizeT offset; // TODO
+                        SizeT offset = 3 * (num_disk_faces * (layer - 1) + 6 * row * row + sector * (2 * row + 1) + 2 * i);
 
-                        // first triangle
+                        // first prism
                         Ts[offset] = Vector4i{
                             cylinder_vertex_index(layer - 1, row, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer - 1, row + 1, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer - 1, row + 1, sector, i + 1, num_disk_vertices),
-                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward && lean_left, num_disk_vertices)
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward && lean_left_top, num_disk_vertices)
                         };
                         Ts[offset + 1] = Vector4i{
                             cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i, num_disk_vertices),
-                            cylinder_vertex_index(layer - 1, row + 1, sector, i + lean_left, num_disk_vertices),
-                            cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices), // TODO
-                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward && lean_left, num_disk_vertices)
+                            cylinder_vertex_index(layer - 1, row + 1, sector, i + !lean_forward || !lean_left_top, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + 1, sector, i + lean_forward || lean_left_top, num_disk_vertices)
                         };
                         Ts[offset + 2] = Vector4i{
-                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward && !lean_left, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward && !lean_left_top, num_disk_vertices),
                             cylinder_vertex_index(layer, row, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer, row + 1, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices)
                         };
 
-                        // second triangle
+                        // if we are at the end, the corner vertex needs to wrap around
+                        // get the next sector and reset i instead of incrementing i
+                        // i.e. in that case we can't use (_, row, sector, i + 1), we have to wrap
+                        bool corner_vertex = i == row - 1;
+                        SizeT left_sector = corner_vertex ? (sector + 1) % 6 : sector;
+                        SizeT left_i = corner_vertex ? 0 : i + 1;
+
+                        // second prism
+                        Ts[offset + 3] = Vector4i{
+                            cylinder_vertex_index(layer - 1, row, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + 1, sector, i + 1, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row, left_sector, left_i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + lean_forward, !lean_forward && lean_left_bottom ? left_sector : sector, !lean_forward && lean_left_bottom ? left_i : i, num_disk_vertices)
+                        };
+                        Ts[offset + 4] = Vector4i{
+                            cylinder_vertex_index(layer - 1, row, lean_forward || !lean_left_bottom ? left_sector : sector, lean_forward || !lean_left_bottom ? left_i : i, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward || !lean_left_top, num_disk_vertices),
+                            cylinder_vertex_index(layer, row, !lean_forward || lean_left_bottom ? left_sector : sector, !lean_forward || lean_left_bottom ? left_i : i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward || lean_left_top, num_disk_vertices)
+                        };
+                        Ts[offset + 5] = Vector4i{
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, lean_forward && !lean_left_bottom ? left_sector : sector, lean_forward && !lean_left_bottom ? left_i : i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row, left_sector, left_i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row, sector, i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices)
+                        };
                     }
 
-                    // populate the last triangle in the row of the sector
+                    // populate the last prism in the row of the sector, using wrapping
+                    bool lean_forward = (row % 2 == 0) ^ (layer % 2 == 0);
+                    bool lean_left_top = (row % 2 == 0) ^ (row % 2 == 0 && sector % 2 != 0) ^ (layer % 2 == 0);
+                    SizeT next_sector = (sector + 1) % 6;
 
+                    SizeT offset = 3 * (num_disk_faces * (layer - 1) + 6 * row * row + sector * (2 * row + 1) + 2 * row);
+
+                    Ts[offset] = Vector4i{
+                        cylinder_vertex_index(layer - 1, row, next_sector, 0, num_disk_vertices),
+                        cylinder_vertex_index(layer - 1, row + 1, sector, row, num_disk_vertices),
+                        cylinder_vertex_index(layer - 1, row + 1, next_sector, 0, num_disk_vertices),
+                        cylinder_vertex_index(layer, row + lean_forward, !lean_forward || !lean_left_top ? next_sector : sector, !lean_forward || !lean_left_top ? 0 : row, num_disk_vertices)
+                    };
+                    Ts[offset + 1] = Vector4i{
+                        cylinder_vertex_index(layer - 1, row + !lean_forward, !lean_forward || lean_left_top ? next_sector : sector, !lean_forward || lean_left_top ? 0 : row, num_disk_vertices),
+                        cylinder_vertex_index(layer - 1, row + 1, !lean_forward || !lean_left_top ? next_sector : sector, !lean_forward || !lean_left_top ? 0 : row, num_disk_vertices),
+                        cylinder_vertex_index(layer, row + lean_forward, lean_forward || lean_left_top ? next_sector : sector, lean_forward || lean_left_top ? 0 : row, num_disk_vertices),
+                        cylinder_vertex_index(layer, row + 1, lean_forward || lean_left_top ? next_sector : sector, lean_forward || lean_left_top ? 0 : row, num_disk_vertices)
+                    };
+                    Ts[offset + 2] = Vector4i{
+                        cylinder_vertex_index(layer - 1, row + !lean_forward, lean_forward || !lean_left_top ? next_sector : sector, lean_forward || !lean_left_top ? 0 : row, num_disk_vertices),
+                        cylinder_vertex_index(layer, row, next_sector, 0, num_disk_vertices),
+                        cylinder_vertex_index(layer, row + 1, sector, row, num_disk_vertices),
+                        cylinder_vertex_index(layer, row + 1, next_sector, 0, num_disk_vertices)
+                    };
+
+                    Ts[offset + 2] = Vector4i{0, 0, 0, 0};
                 }
             }
         }
@@ -129,7 +182,7 @@ int main() {
         vector<Vector4i> Ts = {Vector4i{0, 1, 2, 3}};
 
         // setup a base mesh to reduce the later work
-        SimplicialComplex base_mesh = tetmesh(Vs, Ts);
+        SimplicialComplex base_mesh = cylinder(0.5, 1, 1, 1);
         // apply the constitution and contact model to the base mesh
         abd.apply_to(base_mesh, 100.0_MPa);
         // apply the default contact model to the base mesh
@@ -176,11 +229,12 @@ int main() {
 
     sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, 0));
 
+    /*
     for(int i = 1; i < 50; i++)
     {
         world.advance();
         world.sync();
         world.retrieve();
         sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, i));
-    }
+    }*/
 }

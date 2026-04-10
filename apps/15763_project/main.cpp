@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 Float pi = std::numbers::pi_v<Float>;
 
 // row 0 is special because it is the center, shared across all sectors
-SizeT cylinder_vertex_index(SizeT layer, SizeT row, SizeT sector, SizeT i, SizeT num_disk_vertices) {
+int cylinder_vertex_index(SizeT layer, SizeT row, SizeT sector, SizeT i, SizeT num_disk_vertices) {
     SizeT layer_offset = layer * num_disk_vertices;
     SizeT row_offset = row == 0 ? 0 : 1 + 6 * row * (row - 1) / 2;
     SizeT sector_offset = sector * row;
@@ -50,7 +50,7 @@ SimplicialComplex cylinder(Float radius, Float height, SizeT radius_subdivisions
     vector<Vector4i> Ts(3 * num_disk_faces * height_subdivisions);
 
     for (SizeT layer = 0; layer <= height_subdivisions; layer++) {
-        Float z = -height / 2 + layer * height;
+        Float z = -height / 2 + layer * height / height_subdivisions;
 
         // populate the vertices
         for (SizeT k = 0; k < num_disk_vertices; k++) {
@@ -74,51 +74,65 @@ SimplicialComplex cylinder(Float radius, Float height, SizeT radius_subdivisions
                         SizeT offset = 3 * (num_disk_faces * (layer - 1) + 6 * row * row + sector * (2 * row + 1) + 2 * i);
 
                         // first prism
+                        // swap the order of vertices if needed to keep the volume positive
+                        int bottom_index_1 = cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i, num_disk_vertices);
+                        int bottom_index_2 = cylinder_vertex_index(layer - 1, row + 1, sector, i + (!lean_forward || !lean_left_top), num_disk_vertices);
+
                         Ts[offset] = Vector4i{
                             cylinder_vertex_index(layer - 1, row, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer - 1, row + 1, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer - 1, row + 1, sector, i + 1, num_disk_vertices),
-                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward && lean_left_top, num_disk_vertices)
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i + (lean_forward && lean_left_top), num_disk_vertices)
                         };
                         Ts[offset + 1] = Vector4i{
-                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i, num_disk_vertices),
-                            cylinder_vertex_index(layer - 1, row + 1, sector, i + !lean_forward || !lean_left_top, num_disk_vertices),
+                            !lean_forward ? bottom_index_1 : bottom_index_2,
+                            !lean_forward ? bottom_index_2 : bottom_index_1,
                             cylinder_vertex_index(layer, row + lean_forward, sector, i, num_disk_vertices),
-                            cylinder_vertex_index(layer, row + 1, sector, i + lean_forward || lean_left_top, num_disk_vertices)
+                            cylinder_vertex_index(layer, row + 1, sector, i + (lean_forward || lean_left_top), num_disk_vertices)
                         };
                         Ts[offset + 2] = Vector4i{
-                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward && !lean_left_top, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + (!lean_forward && !lean_left_top), num_disk_vertices),
                             cylinder_vertex_index(layer, row, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer, row + 1, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices)
                         };
 
+                        Ts[offset] = Vector4i{0, 0, 0, 0};
+                        Ts[offset + 1] = Vector4i{0, 0, 0, 0};
+                        Ts[offset + 2] = Vector4i{0, 0, 0, 0};
+
+                        // second prism
                         // if we are at the end, the corner vertex needs to wrap around
                         // get the next sector and reset i instead of incrementing i
                         // i.e. in that case we can't use (_, row, sector, i + 1), we have to wrap
                         bool corner_vertex = i == row - 1;
                         SizeT left_sector = corner_vertex ? (sector + 1) % 6 : sector;
-                        SizeT left_i = corner_vertex ? 0 : i + 1;
+                        SizeT left_i_bottom = corner_vertex ? 0 : i + 1;
+                        int bottom_index_3 = cylinder_vertex_index(layer - 1, row, lean_forward || !lean_left_bottom ? left_sector : sector, lean_forward || !lean_left_bottom ? left_i_bottom : i, num_disk_vertices);
+                        int bottom_index_4 = cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward, num_disk_vertices);
 
-                        // second prism
                         Ts[offset + 3] = Vector4i{
                             cylinder_vertex_index(layer - 1, row, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer - 1, row + 1, sector, i + 1, num_disk_vertices),
-                            cylinder_vertex_index(layer - 1, row, left_sector, left_i, num_disk_vertices),
-                            cylinder_vertex_index(layer, row + lean_forward, !lean_forward && lean_left_bottom ? left_sector : sector, !lean_forward && lean_left_bottom ? left_i : i, num_disk_vertices)
+                            cylinder_vertex_index(layer - 1, row, left_sector, left_i_bottom, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + lean_forward, !lean_forward && lean_left_bottom ? left_sector : sector, lean_forward ? i + 1 : (lean_left_bottom ? left_i_bottom : i), num_disk_vertices)
                         };
                         Ts[offset + 4] = Vector4i{
-                            cylinder_vertex_index(layer - 1, row, lean_forward || !lean_left_bottom ? left_sector : sector, lean_forward || !lean_left_bottom ? left_i : i, num_disk_vertices),
-                            cylinder_vertex_index(layer - 1, row + !lean_forward, sector, i + !lean_forward || !lean_left_top, num_disk_vertices),
-                            cylinder_vertex_index(layer, row, !lean_forward || lean_left_bottom ? left_sector : sector, !lean_forward || lean_left_bottom ? left_i : i, num_disk_vertices),
-                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward || lean_left_top, num_disk_vertices)
+                            !lean_forward ? bottom_index_3 : bottom_index_4,
+                            !lean_forward ? bottom_index_4 : bottom_index_3,
+                            cylinder_vertex_index(layer, row, !lean_forward || lean_left_bottom ? left_sector : sector, !lean_forward || lean_left_bottom ? left_i_bottom : i, num_disk_vertices),
+                            cylinder_vertex_index(layer, row + lean_forward, sector, i + lean_forward, num_disk_vertices)
                         };
                         Ts[offset + 5] = Vector4i{
-                            cylinder_vertex_index(layer - 1, row + !lean_forward, lean_forward && !lean_left_bottom ? left_sector : sector, lean_forward && !lean_left_bottom ? left_i : i, num_disk_vertices),
-                            cylinder_vertex_index(layer, row, left_sector, left_i, num_disk_vertices),
+                            cylinder_vertex_index(layer - 1, row + !lean_forward, lean_forward && !lean_left_bottom ? left_sector : sector, !lean_forward ? i + 1 : (!lean_left_bottom ? left_i_bottom : i), num_disk_vertices),
+                            cylinder_vertex_index(layer, row, left_sector, left_i_bottom, num_disk_vertices),
                             cylinder_vertex_index(layer, row, sector, i, num_disk_vertices),
                             cylinder_vertex_index(layer, row + 1, sector, i + 1, num_disk_vertices)
                         };
+
+                        Ts[offset + 3] = Vector4i{0, 0, 0, 0};
+                        Ts[offset + 4] = Vector4i{0, 0, 0, 0};
+                        Ts[offset + 5] = Vector4i{0, 0, 0, 0};
                     }
 
                     // populate the last prism in the row of the sector, using wrapping
@@ -128,25 +142,31 @@ SimplicialComplex cylinder(Float radius, Float height, SizeT radius_subdivisions
 
                     SizeT offset = 3 * (num_disk_faces * (layer - 1) + 6 * row * row + sector * (2 * row + 1) + 2 * row);
 
+                    // swap the order of vertices if needed to keep the volume positive
+                    int bottom_index_1 = cylinder_vertex_index(layer - 1, row + !lean_forward, !lean_forward ? next_sector : sector, !lean_forward ? 0 : row, num_disk_vertices);
+                    int bottom_index_2 = cylinder_vertex_index(layer - 1, row + 1, lean_forward && !lean_left_top ? next_sector : sector, lean_forward && !lean_left_top ? 0 : row, num_disk_vertices);
+
                     Ts[offset] = Vector4i{
                         cylinder_vertex_index(layer - 1, row, next_sector, 0, num_disk_vertices),
                         cylinder_vertex_index(layer - 1, row + 1, sector, row, num_disk_vertices),
                         cylinder_vertex_index(layer - 1, row + 1, next_sector, 0, num_disk_vertices),
-                        cylinder_vertex_index(layer, row + lean_forward, !lean_forward || !lean_left_top ? next_sector : sector, !lean_forward || !lean_left_top ? 0 : row, num_disk_vertices)
+                        cylinder_vertex_index(layer, row + lean_forward, !lean_forward || lean_left_top ? next_sector : sector, !lean_forward || lean_left_top ? 0 : row, num_disk_vertices)
                     };
                     Ts[offset + 1] = Vector4i{
-                        cylinder_vertex_index(layer - 1, row + !lean_forward, !lean_forward || lean_left_top ? next_sector : sector, !lean_forward || lean_left_top ? 0 : row, num_disk_vertices),
-                        cylinder_vertex_index(layer - 1, row + 1, !lean_forward || !lean_left_top ? next_sector : sector, !lean_forward || !lean_left_top ? 0 : row, num_disk_vertices),
-                        cylinder_vertex_index(layer, row + lean_forward, lean_forward || lean_left_top ? next_sector : sector, lean_forward || lean_left_top ? 0 : row, num_disk_vertices),
-                        cylinder_vertex_index(layer, row + 1, lean_forward || lean_left_top ? next_sector : sector, lean_forward || lean_left_top ? 0 : row, num_disk_vertices)
+                        lean_forward ? bottom_index_1 : bottom_index_2,
+                        lean_forward ? bottom_index_2 : bottom_index_1,
+                        cylinder_vertex_index(layer, row + lean_forward, lean_forward ? next_sector : sector, lean_forward ? 0 : row, num_disk_vertices),
+                        cylinder_vertex_index(layer, row + 1, !lean_forward && lean_left_top ? next_sector : sector, !lean_forward && lean_left_top ? 0 : row, num_disk_vertices)
                     };
                     Ts[offset + 2] = Vector4i{
-                        cylinder_vertex_index(layer - 1, row + !lean_forward, lean_forward || !lean_left_top ? next_sector : sector, lean_forward || !lean_left_top ? 0 : row, num_disk_vertices),
+                        cylinder_vertex_index(layer - 1, row + !lean_forward, lean_forward || lean_left_top ? next_sector : sector, lean_forward || lean_left_top ? 0 : row, num_disk_vertices),
                         cylinder_vertex_index(layer, row, next_sector, 0, num_disk_vertices),
                         cylinder_vertex_index(layer, row + 1, sector, row, num_disk_vertices),
                         cylinder_vertex_index(layer, row + 1, next_sector, 0, num_disk_vertices)
                     };
 
+                    Ts[offset] = Vector4i{0, 0, 0, 0};
+                    //Ts[offset + 1] = Vector4i{0, 0, 0, 0};
                     Ts[offset + 2] = Vector4i{0, 0, 0, 0};
                 }
             }
@@ -182,7 +202,7 @@ int main() {
         vector<Vector4i> Ts = {Vector4i{0, 1, 2, 3}};
 
         // setup a base mesh to reduce the later work
-        SimplicialComplex base_mesh = cylinder(0.5, 1, 1, 1);
+        SimplicialComplex base_mesh = cylinder(0.5, 0.2, 5, 2);
         // apply the constitution and contact model to the base mesh
         abd.apply_to(base_mesh, 100.0_MPa);
         // apply the default contact model to the base mesh

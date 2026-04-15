@@ -3,6 +3,7 @@
 #include <uipc/constitution/affine_body_constitution.h>
 #include <uipc/constitution/stable_neo_hookean.h>
 #include <15763_project/generate.h>
+#include <15763_project/export.h>
 #include <cmath>
 #include <iostream>
 
@@ -20,6 +21,9 @@ int main() {
     config["gravity"] = Vector3{0, -9.8, 0};
     config["dt"] = 0.01_s;
 
+    vector<Vector3> Vs;
+    vector<Vector4i> Ts;
+
     Scene scene{config};
     {
         // create constitution and contact model
@@ -33,8 +37,6 @@ int main() {
         auto default_element = scene.contact_tabular().default_element();
 
         // setup a base mesh to reduce the later work
-        vector<Vector3> Vs;
-        vector<Vector4i> Ts;
         SimplicialComplex base_mesh = cylinder(0.5, 1, 10, 20, Vs, Ts);
         // apply the default contact model to the base mesh
         default_element.apply_to(base_mesh);
@@ -82,9 +84,10 @@ int main() {
 
     auto this_output_path = AssetDir::output_path(UIPC_RELATIVE_SOURCE_FILE);
 
+    write_ply(Vs, Ts, fmt::format("{}initial.ply", this_output_path));
     sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, 0));
 
-    for(int i = 1; i < 200; i++)
+    for(int i = 1; i < 0; i++)
     {
         world.advance();
         world.sync();

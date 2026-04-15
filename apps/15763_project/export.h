@@ -41,7 +41,7 @@ void faces(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, vector<Vector3
 
         for (auto face : tet_faces) {
             bool external_face = true;
-            for (auto potential_neighbor : vertex_tet_map[Ts[i].x()]) {
+            for (auto potential_neighbor : vertex_tet_map[face.x()]) {
                 if (potential_neighbor != i && neighbor(face, Ts[potential_neighbor])) {
                     external_face = false;
 

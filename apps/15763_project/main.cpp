@@ -4,6 +4,7 @@
 #include <uipc/constitution/stable_neo_hookean.h>
 #include <15763_project/generate.h>
 #include <15763_project/export.h>
+#include <15763_project/stress.h>
 #include <cmath>
 #include <iostream>
 
@@ -85,6 +86,7 @@ int main() {
     auto this_output_path = AssetDir::output_path(UIPC_RELATIVE_SOURCE_FILE);
 
     write_ply(Vs, Ts, fmt::format("{}initial.ply", this_output_path));
+    write_cauchy_stress_csv(stress, fmt::format("{}stress.csv", this_output_path))
     sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, 0));
 
     for(int i = 1; i < 0; i++)

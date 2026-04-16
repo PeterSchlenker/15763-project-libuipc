@@ -102,3 +102,14 @@ void write_ply(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, string fil
 
     file.close();
 }
+
+void write_cauchy_stress_csv(const vector<Matrix3x3> &sigmas, string filename) {
+    std::ofstream file(filename);
+
+    for (auto sigma : sigmas) {
+        // row-major ordering
+        file << sigma(0, 0) << "," << sigma(0, 1) << "," << sigma(0, 2)
+            << "," << sigma(1, 0) << "," << sigma(1, 1) << "," << sigma(1, 2)
+            << "," << sigma(2, 0) << "," << sigma(2, 1) << "," << sigma(2, 2) << std::endl;
+    }
+}

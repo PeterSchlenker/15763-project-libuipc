@@ -3,13 +3,16 @@
 #include <uipc/uipc.h>
 #include <15763_project/copied_cuda_code.h>
 
+#include <iostream>
+
+using namespace uipc::constitution;
 
 vector<Matrix3x3> calculate_cauchy_stress(
     const vector<Vector3> &Vs,
     const vector<Vector4i> &Ts,
     const ElasticModuli& moduli,
     const vector<Matrix3x3> &Dm_invs,
-    const vector<Vector3> &currentVs
+    const span<const Vector3> &currentVs
 ) {
     // code based on stable_neo_hookean_3d.cu
     vector<Matrix3x3> sigmas(Ts.size());
@@ -31,7 +34,7 @@ vector<Matrix3x3> calculate_cauchy_stress(
         Matrix3x3 dEdF;
         dEdVecF(dEdF, moduli.mu(), moduli.lambda(), Fmat);
 
-        sigmas.push_back(1 / J * dEdF * Fmat.transpose());
+        sigmas[I] = 1 / J * dEdF * Fmat.transpose();
     }
 
     return sigmas;

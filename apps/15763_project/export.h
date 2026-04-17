@@ -13,7 +13,7 @@ bool neighbor(const Vector3i &face, const Vector4i &tet) {
         && (face.z() == tet.x() || face.z() == tet.y() || face.z() == tet.z() || face.z() == tet.w());
 }
 
-void faces(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, vector<Vector3i> &Fs, vector<Vector2> &uvs) {
+void faces(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, vector<Vector3i> &Fs, vector<Vector2i> &sides) {
     // step 1: map vertices to all neighboring tetrahedra
     vector<vector<SizeT>> vertex_tet_map(Vs.size());
 
@@ -27,7 +27,7 @@ void faces(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, vector<Vector3
     // step 2: for each face of each tetrahedra, find its neighbors and insert a face if needed
     SizeT num_tets = Ts.size();
     Fs = vector<Vector3i>();
-    uvs = vector<Vector2>();
+    sides = vector<Vector2i>();
 
     for (SizeT i = 0; i < Ts.size(); i++) {
         // orient faces so normals point out
@@ -48,7 +48,7 @@ void faces(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, vector<Vector3
                     // only insert faces for neighbors we haven't got to yet
                     if (potential_neighbor > i) {
                         Fs.push_back(face);
-                        uvs.push_back({(Float) potential_neighbor / num_tets, (Float) i / num_tets});
+                        sides.push_back({potential_neighbor, i});
                     }
 
                     // there can only be one neighbor, no point in looking for more
@@ -57,18 +57,18 @@ void faces(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, vector<Vector3
             }
             if (external_face) {
                 Fs.push_back(face);
-                uvs.push_back({(Float) 1, (Float) i / num_tets});
+                sides.push_back({num_tets, i});
             }
         }
     }
 }
 
-void write_ply(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, string filename) {
+void write_ply(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, string filename) {
     std::ofstream file(filename);
 
     vector<Vector3i> Fs;
-    vector<Vector2> uvs;
-    faces(Vs, Ts, Fs, uvs);
+    vector<Vector2i> sides;
+    faces(Vs, Ts, Fs, sides);
 
     // header
     file
@@ -77,10 +77,11 @@ void write_ply(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, string fil
     << "property float x\n"
     << "property float y\n"
     << "property float z\n"
-    << "property float s\n"
-    << "property float t\n"
+    << "property float outer_tet\n"
+    << "property float inner_tet\n"
     << "element face " << Fs.size() <<"\n"
     << "property list uchar uint vertex_indices\n"
+    << "comment tet " << Ts.size() << "\n"
     << "end_header" << std::endl;
 
     // data
@@ -90,7 +91,7 @@ void write_ply(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, string fil
         for (auto vi : {Fs[i].x(), Fs[i].y(), Fs[i].z()}) {
             Vector3 v = Vs[vi];
 
-            file << v.x() << " " << v.y() << " " << v.z() << " " << uvs[i].x() << " " << uvs[i].y() << std::endl;
+            file << v.x() << " " << v.y() << " " << v.z() << " " << sides[i].x() << " " << sides[i].y() << std::endl;
         }
     }
 
@@ -103,7 +104,7 @@ void write_ply(const vector<Vector3> &Vs, const vector<Vector4i> &Ts, string fil
     file.close();
 }
 
-void write_cauchy_stress_csv(const vector<Matrix3x3> &sigmas, string filename) {
+void write_cauchy_stress_csv(const span<const Matrix3x3> &sigmas, string filename) {
     std::ofstream file(filename);
 
     for (auto sigma : sigmas) {

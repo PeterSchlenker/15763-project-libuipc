@@ -2,6 +2,7 @@
 #include <uipc/uipc.h>
 #include <cmath>
 #include <numbers>
+#include <iostream>
 
 using namespace uipc;
 using namespace uipc::core;
@@ -156,6 +157,111 @@ SimplicialComplex cylinder(Float radius, Float height, SizeT radius_subdivisions
             }
         }
     }
+
+    return tetmesh(Vs, Ts);
+}
+
+int box_vertex_index(SizeT i, SizeT j, SizeT k, SizeT num_x_vertices, SizeT num_y_vertices) {
+    return i + j * num_x_vertices + k * num_x_vertices * num_y_vertices;
+}
+
+SimplicialComplex box(Vector3 size, Vector3i subdivisions, vector<Vector3> &Vs, vector<Vector4i> &Ts) {
+    SizeT num_x_vertices = subdivisions.x() + 1;
+    SizeT num_y_vertices = subdivisions.y() + 1;
+    SizeT num_z_vertices = subdivisions.z() + 1;
+    SizeT num_vertices = num_x_vertices * num_y_vertices * num_z_vertices;
+    Vs = vector<Vector3>(num_vertices);
+    
+    for (SizeT k = 0; k < num_z_vertices; k++) {
+        for (SizeT j = 0; j < num_y_vertices; j++) {
+            for (SizeT i = 0; i < num_x_vertices; i++) {
+                Vs[box_vertex_index(i, j, k, num_x_vertices, num_y_vertices)] = Vector3{
+                    ((Float)i / subdivisions.x() - 0.5) * size.x(),
+                    ((Float)j / subdivisions.y() - 0.5) * size.y(),
+                    ((Float)k / subdivisions.z() - 0.5) * size.z()
+                };
+            }
+        }
+    }
+
+    SizeT num_voxels = subdivisions.x() * subdivisions.y() * subdivisions.z();
+    Ts = vector<Vector4i>(num_voxels * 5);
+
+    SizeT tet_index = 0;
+    for (SizeT k = 0; k < subdivisions.z(); k++) {
+        for (SizeT j = 0; j < subdivisions.y(); j++) {
+            for (SizeT i = 0; i < subdivisions.x(); i++) {
+                if ((i + j + k) % 2 == 0) {
+                    // i, j, k is a corner
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i + 1, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                }
+                else {
+                    // i, j, k is not a corner
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i + 1, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i + 1, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j + 1, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j + 1, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                    Ts[tet_index++] = Vector4i{
+                        box_vertex_index(i, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k + 1, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j, k, num_x_vertices, num_y_vertices),
+                        box_vertex_index(i + 1, j + 1, k + 1, num_x_vertices, num_y_vertices)
+                    };
+                }
+            }
+        }
+    }
+
+    std::cout << "x" << std::endl;
 
     return tetmesh(Vs, Ts);
 }

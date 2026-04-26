@@ -57,13 +57,13 @@ void faces(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, vector
             }
             if (external_face) {
                 Fs.push_back(face);
-                sides.push_back({num_tets, i});
+                sides.push_back({-1, i});
             }
         }
     }
 }
 
-void write_ply(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, string filename) {
+void write_ply(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, const span<const Matrix3x3> &stress, string filename) {
     std::ofstream file(filename);
 
     vector<Vector3i> Fs;
@@ -73,32 +73,53 @@ void write_ply(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, st
     // header
     file
     << "ply\nformat ascii 1.0\n"
-    << "element vertex " << Fs.size() * 3 << "\n"
+    << "element vertex " << Vs.size() << "\n"
     << "property float x\n"
     << "property float y\n"
     << "property float z\n"
-    << "property float outer_tet\n"
-    << "property float inner_tet\n"
     << "element face " << Fs.size() <<"\n"
     << "property list uchar uint vertex_indices\n"
+    << "property uchar external_face_state_x\n"
+    << "property float sigma_ext_normal_x\n"
+    << "property float sigma_ext_normal_y\n"
+    << "property float sigma_ext_normal_z\n"
+    << "property float sigma_ext_tangent_x\n"
+    << "property float sigma_ext_tangent_y\n"
+    << "property float sigma_ext_tangent_z\n"
+    << "property float sigma_int_normal_x\n"
+    << "property float sigma_int_normal_y\n"
+    << "property float sigma_int_normal_z\n"
+    << "property float sigma_int_tangent_x\n"
+    << "property float sigma_int_tangent_y\n"
+    << "property float sigma_int_tangent_z\n"
     << "comment tet " << Ts.size() << "\n"
     << "end_header" << std::endl;
 
     // data
     // vertices
-    // because each face needs to have different uv coordinates, they can't share vertices
-    for (SizeT i = 0; i < Fs.size(); i++) {
-        for (auto vi : {Fs[i].x(), Fs[i].y(), Fs[i].z()}) {
-            Vector3 v = Vs[vi];
-
-            file << v.x() << " " << v.y() << " " << v.z() << " " << sides[i].x() << " " << sides[i].y() << std::endl;
-        }
+    for (SizeT i = 0; i < Vs.size(); i++) {
+        file << Vs[i].x() << " " << Vs[i].y() << " " << Vs[i].z() << std::endl;
     }
 
     // faces
     for (SizeT i = 0; i < Fs.size(); i++) {
-        // use the index in the file, not the index in Vs
-        file << "3 " << 3 * i << " " << 3 * i + 1 << " " << 3 * i + 2 << std::endl;
+        bool external_face = sides[i].x() == -1 || sides[i].y() == -1;
+        
+        Matrix3x3 sigma_ext = Matrix3x3::Zero();
+        if (sides[i].x() != -1) {
+            sigma_ext = stress[sides[i].x()];
+        }
+        Matrix3x3 sigma_int = Matrix3x3::Zero();
+        if (sides[i].y() != -1) {
+            sigma_int = stress[sides[i].x()];
+        }
+
+        file << "3 " << Fs[i].x() << " " << Fs[i].y() << " " << Fs[i].z() << " "
+            << (external_face ? (sides[i].x() == -1 ? 1 : 2) : 0) << " "
+            << sigma_ext(0, 0) << " " << sigma_ext(1, 1) << " " << sigma_ext(2, 2) << " "
+            << sigma_ext(1, 2) << " " << sigma_ext(0, 2) << " " << sigma_ext(0, 1) << " "
+            << sigma_int(0, 0) << " " << sigma_int(1, 1) << " " << sigma_int(2, 2) << " "
+            << sigma_int(1, 2) << " " << sigma_int(0, 2) << " " << sigma_int(0, 1) << std::endl;
     }
 
     file.close();

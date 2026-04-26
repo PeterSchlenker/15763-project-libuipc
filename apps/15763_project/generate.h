@@ -261,7 +261,5 @@ SimplicialComplex box(Vector3 size, Vector3i subdivisions, vector<Vector3> &Vs, 
         }
     }
 
-    std::cout << "x" << std::endl;
-
     return tetmesh(Vs, Ts);
 }

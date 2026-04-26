@@ -143,11 +143,8 @@ void box_scene() {
 
     // setup a base mesh to reduce the later work
     SimplicialComplex base_mesh = box(Vector3{0.8, 0.9, 1}, Vector3i{8, 9, 10}, Vs, Ts);
-    std::cout << "y" << std::endl;
     // apply the default contact model to the base mesh
     default_element.apply_to(base_mesh);
-
-    std::cout << "a" << std::endl;
 
     // precompute info for stress calculation
     Dm_invs.reserve(Ts.size());
@@ -159,8 +156,6 @@ void box_scene() {
     label_surface(base_mesh);
     // label the triangle orientation to export the correct surface mesh
     label_triangle_orient(base_mesh);
-
-    std::cout << "b" << std::endl;
 
     SimplicialComplex rendered_mesh = base_mesh;
     {
@@ -185,16 +180,12 @@ void box_scene() {
         is_fixed_view[0] = 1;
     }
 
-    std::cout << "c" << std::endl;
-
     // create object with two geometries
     auto object = scene.objects().create("tets");
     {
         object->geometries().create(rendered_mesh);
         object->geometries().create(mesh2);
     }
-
-    std::cout << "world init" << std::endl;
 
     world.init(scene);
 
@@ -225,6 +216,34 @@ void box_scene() {
         //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
         write_ply(currentVs, Ts, stress, fmt::format("{}box_scene/tet_face_mesh{}.ply", this_output_path, i));
     }
+}
+
+void astm_loading() {
+    // material parameters
+    Float C = 2.76e-12 * 1.0_m * 1.0_m / 1.0_N;
+    Float lambda = 550e-9_m;
+    Float material_fringe_value = lambda / C;
+
+    // scene parameters
+    Float Li = 25.0_mm;
+    Float L = 115.0_mm;
+    Float b = 255.0_mm;
+    Float d = 10.0_mm;
+    Float r = 5.0_mm;
+    Float g = 9.8 * 1.0_m / 1.0_s / 1.0_s;
+
+    // mass needed to get a certain number of fringe cycles
+    Float target_num_cycles = 10.0;
+    Float target_max_sigma = target_num_cycles / 2 * material_fringe_value / d;
+    Float W = target_max_sigma * 2 * b * d * d / 3 / (L - Li);
+    Float loading_mass = W / g;
+    Float loading_mass_volume = 2 * M_PI * r * r * b;
+    Float loading_mass_density = loading_mass / loading_mass_volume;
+
+
+    vector<Vector3> cylinder_Vs;
+    vector<Vector4i> cylinder_Ts;
+    SimplicialComplex loading_point_mesh = cylinder(r, b, 10, 1, cylinder_Vs, cylinder_Ts);
 }
 
 int main() {

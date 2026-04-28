@@ -400,8 +400,204 @@ void astm_loading_scene() {
     }
 }
 
+void table_scene() {
+    // material parameters
+    ElasticModuli tabletop_moduli = ElasticModuli::youngs_poisson(100.0_MPa, 0.49);
+    ElasticModuli leg_moduli = ElasticModuli::youngs_poisson(150.0_MPa, 0.49);
+    Float table_density = 1000; // kg/m^3
+    Float cube_density = 20000; // kg/m^3
+
+    // scene dimensions
+    Float leg_height = 0.65_m;
+    Float leg_radius = 0.05_m;
+    Float offset_from_table_edge = 0.1_m;
+    Float table_length = 1.2_m;
+    Float table_width = 0.9_m;
+    Float table_height = 0.04_m;
+    Float cube_width = 0.1_m;
+    Float cube_initial_height = 1.0_m;
+    Float g = 9.8; // m/s^2
+    Float initial_gap = 1.0_mm;
+
+    Float leg_x = table_width / 2 - offset_from_table_edge;
+    Float leg_y = leg_height / 2 + initial_gap;
+    Float leg_z = table_length / 2 - offset_from_table_edge;
+
+    // scene config
+    auto  config = Scene::default_config();
+    config["gravity"] = Vector3{0, -g, 0};
+    config["dt"] = 0.01_s;
+    config["contact"]["d_hat"] = 0.5_mm;
+
+    // scene setup
+    string tetmesh_dir{AssetDir::tetmesh_path()};
+    Engine engine{"cuda"};
+    World world{engine};
+    Scene scene{config};
+    bool export_everything = false;
+
+    // create constitution and contact model
+    AffineBodyConstitution abd;
+    scene.constitution_tabular().insert(abd);
+    StableNeoHookean snh;
+    scene.constitution_tabular().insert(snh);
+
+    // friction ratio and contact resistance
+    scene.contact_tabular().default_model(0.85, 1.0_GPa);
+    auto default_element = scene.contact_tabular().default_element();
+
+
+    // create the meshes
+    // table leg
+    vector<Vector3> leg_Vs;
+    vector<Vector4i> leg_Ts;
+    SimplicialComplex leg_mesh = cylinder(leg_radius, leg_height, 5, 65, leg_Vs, leg_Ts);
+    default_element.apply_to(leg_mesh);
+    label_surface(leg_mesh);
+    label_triangle_orient(leg_mesh);
+
+    // tabletop mesh
+    vector<Vector3> tabletop_Vs;
+    vector<Vector4i> tabletop_Ts;
+    SimplicialComplex tabletop_mesh = box(Vector3{table_width, table_height, table_length}, Vector3i{80, 4, 160}, tabletop_Vs, tabletop_Ts);
+    default_element.apply_to(tabletop_mesh);
+    label_surface(tabletop_mesh);
+    label_triangle_orient(tabletop_mesh);
+
+    // cube mesh
+    vector<Vector3> cube_Vs;
+    vector<Vector4i> cube_Ts;
+    auto cube_mesh = box(Vector3{cube_width, cube_width, cube_width}, Vector3i{1, 1, 1}, cube_Vs, cube_Ts);
+    label_surface(cube_mesh);
+    label_triangle_orient(cube_mesh);
+
+    // ground
+    // vector<Vector3> ground_Vs;
+    // vector<Vector4i> ground_Ts;
+    // auto ground_mesh = box(Vector3{10, 1, 10}, Vector3i{1, 1, 1}, ground_Vs, ground_Ts);
+    // label_surface(ground_mesh);
+    // label_triangle_orient(ground_mesh);
+
+    // precompute info for stress calculation
+    // vector<Matrix3x3> Dm_invs;
+    // Dm_invs.reserve(glass_Ts.size());
+    // for (auto tet : glass_Ts) {
+    //     Dm_invs.push_back(Dm_inv(glass_Vs[tet(0)], glass_Vs[tet(1)], glass_Vs[tet(2)], glass_Vs[tet(3)]));
+    // }
+
+    // place the meshes in the scene
+    // back left table leg
+    SimplicialComplex bl_leg_mesh = leg_mesh;
+    snh.apply_to(bl_leg_mesh, leg_moduli, table_density);
+    {
+        Transform t = Transform::Identity();
+        t.translate(Vector3{-leg_x, leg_y, -leg_z});
+        t.rotate(AngleAxis(M_PI / 2, Vector3{1, 0, 0}));
+        view(bl_leg_mesh.transforms())[0] = t.matrix();
+    }
+    auto bl_leg_object = scene.objects().create("bl_leg");
+    bl_leg_object->geometries().create(bl_leg_mesh);
+
+    // back right table leg
+    SimplicialComplex br_leg_mesh = leg_mesh;
+    snh.apply_to(br_leg_mesh, leg_moduli, table_density);
+    {
+        Transform t = Transform::Identity();
+        t.translate(Vector3{leg_x, leg_y, -leg_z});
+        t.rotate(AngleAxis(M_PI / 2, Vector3{1, 0, 0}));
+        view(br_leg_mesh.transforms())[0] = t.matrix();
+    }
+    auto br_leg_object = scene.objects().create("br_leg");
+    br_leg_object->geometries().create(br_leg_mesh);
+
+    // front left table leg
+    SimplicialComplex fl_leg_mesh = leg_mesh;
+    snh.apply_to(fl_leg_mesh, leg_moduli, table_density);
+    {
+        Transform t = Transform::Identity();
+        t.translate(Vector3{-leg_x, leg_y, leg_z});
+        t.rotate(AngleAxis(M_PI / 2, Vector3{1, 0, 0}));
+        view(fl_leg_mesh.transforms())[0] = t.matrix();
+    }
+    auto fl_leg_object = scene.objects().create("fl_leg");
+    fl_leg_object->geometries().create(fl_leg_mesh);
+
+    // front right table leg
+    SimplicialComplex fr_leg_mesh = leg_mesh;
+    snh.apply_to(fr_leg_mesh, leg_moduli, table_density);
+    {
+        Transform t = Transform::Identity();
+        t.translate(Vector3{leg_x, leg_y, leg_z});
+        t.rotate(AngleAxis(M_PI / 2, Vector3{1, 0, 0}));
+        view(fr_leg_mesh.transforms())[0] = t.matrix();
+    }
+    auto fr_leg_object = scene.objects().create("fr_leg");
+    fr_leg_object->geometries().create(fr_leg_mesh);
+
+    // tabletop
+    snh.apply_to(tabletop_mesh, tabletop_moduli, table_density);
+    {
+        Transform t = Transform::Identity();
+        t.translate(Vector3{0, leg_height + table_height / 2 + 2 * initial_gap, 0});
+        view(tabletop_mesh.transforms())[0] = t.matrix();
+    }
+    auto tabletop_object = scene.objects().create("tabletop");
+    tabletop_object->geometries().create(tabletop_mesh);
+
+    // cube
+    abd.apply_to(cube_mesh, 100.0_MPa, cube_density);
+    {
+        Transform t = Transform::Identity();
+        t.translate(Vector3{0, cube_initial_height, 0});
+        view(cube_mesh.transforms())[0] = t.matrix();
+    }
+    auto cube_object = scene.objects().create("cube");
+    cube_object->geometries().create(cube_mesh);
+
+    // ground
+    // {
+    //     Transform t = Transform::Identity();
+    //     t.translate(Vector3{0, -0.5, 0});
+    //     view(ground_mesh.transforms())[0] = t.matrix();
+    // }
+    auto ground_object = scene.objects().create("ground");
+    ground_object->geometries().create(ground(0));
+    //ground_object->geometries().create(ground_mesh);
+
+
+    // initialize the scene
+    world.init(scene);
+    SceneIO sio{scene};
+    auto this_output_path = AssetDir::output_path(UIPC_RELATIVE_SOURCE_FILE);
+
+    //auto mesh = scene.geometries().find(glass_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    //auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    //auto stress = calculate_cauchy_stress(glass_Vs, glass_Ts, moduli, Dm_invs, currentVs);
+    //write_ply_vertex_stress(glass_Vs, glass_Ts, stress, fmt::format("{}table_scene/tet_face_mesh{}.ply", this_output_path, 0));
+
+    sio.write_surface(fmt::format("{}table_scene/scene_surface{}.obj", this_output_path, 0));
+
+    for(int i = 1; i < 50; i++)
+    {
+        world.advance();
+        world.sync();
+        world.retrieve();
+
+        sio.write_surface(fmt::format("{}table_scene/scene_surface{}.obj", this_output_path, i));
+        
+        //scene.geometries().find(0).vertices().find<Vector3>(builtin::position)->view();
+        //auto mesh = scene.geometries().find(0).geometry->geometry().as<SimplicialComplex>();
+        //auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+
+        //auto stress = calculate_cauchy_stress(glass_Vs, glass_Ts, moduli, Dm_invs, currentVs);
+        //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
+        //write_ply_face_stress(glass_Vs, glass_Ts, stress, fmt::format("{}table_scene/tet_face_mesh_face{}.ply", this_output_path, i));
+        //write_ply_vertex_stress(glass_Vs, glass_Ts, stress, fmt::format("{}table_scene/tet_face_mesh_vertex{}.ply", this_output_path, i));
+    }
+}
+
 int main() {
-    astm_loading_scene();
+    table_scene();
 
     return 0;
 }

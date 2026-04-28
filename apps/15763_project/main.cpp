@@ -95,7 +95,7 @@ void cylinder_scene() {
     auto mesh = scene.geometries().find(0).geometry->geometry().as<SimplicialComplex>();
     auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
     auto stress = calculate_cauchy_stress(Vs, Ts, moduli, Dm_invs, currentVs);
-    write_ply(currentVs, Ts, stress, fmt::format("{}tet_face_mesh{}.ply", this_output_path, 0));
+    write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}tet_face_mesh{}.ply", this_output_path, 0));
 
     sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, 0));
 
@@ -113,7 +113,7 @@ void cylinder_scene() {
 
         auto stress = calculate_cauchy_stress(Vs, Ts, moduli, Dm_invs, currentVs);
         //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
-        write_ply(currentVs, Ts, stress, fmt::format("{}tet_face_mesh{}.ply", this_output_path, i));
+        write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}tet_face_mesh{}.ply", this_output_path, i));
     }
 }
 
@@ -197,7 +197,7 @@ void box_scene() {
     auto mesh = scene.geometries().find(0).geometry->geometry().as<SimplicialComplex>();
     auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
     auto stress = calculate_cauchy_stress(Vs, Ts, moduli, Dm_invs, currentVs);
-    write_ply(currentVs, Ts, stress, fmt::format("{}box_scene/tet_face_mesh{}.ply", this_output_path, 0));
+    write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}box_scene/tet_face_mesh{}.ply", this_output_path, 0));
 
     sio.write_surface(fmt::format("{}box_scene/scene_surface{}.obj", this_output_path, 0));
 
@@ -215,7 +215,7 @@ void box_scene() {
 
         auto stress = calculate_cauchy_stress(Vs, Ts, moduli, Dm_invs, currentVs);
         //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
-        write_ply(currentVs, Ts, stress, fmt::format("{}box_scene/tet_face_mesh{}.ply", this_output_path, i));
+        write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}box_scene/tet_face_mesh{}.ply", this_output_path, i));
     }
 }
 
@@ -228,22 +228,25 @@ void astm_loading_scene() {
     Float material_fringe_value = lambda / C;
 
     // scene dimensions
-    Float Li = 25.0_mm * 4;
-    Float L = 115.0_mm * 4;
-    Float Lg = 125.0_mm * 4;
-    Float b = 25.0_mm * 4;
-    Float d = 10.0_mm * 4;
-    Float r = 5.0_mm * 4;
+    Float scale = 4;
+    Float Li = 25.0_mm * scale;
+    Float L = 115.0_mm * scale;
+    Float Lg = 125.0_mm * scale;
+    Float b = 25.0_mm * scale;
+    Float d = 10.0_mm * scale;
+    Float r = 5.0_mm * scale;
     Float g = 9.8; // m/s^2
     Float initial_gap = 0.8_mm;
 
     // mass needed to get a certain number of fringe cycles
-    Float target_num_cycles = 3.0;
-    Float target_max_sigma = target_num_cycles / 2 * material_fringe_value / d;
+    Float target_num_cycles = 12.0;
+    Float target_max_sigma = target_num_cycles / 2 * material_fringe_value / b;
     Float W = target_max_sigma * 2 * b * d * d / 3 / (L - Li);
     Float loading_mass = W / g;
     Float loading_mass_volume = 2 * M_PI * r * r * b;
     Float loading_mass_density = loading_mass / loading_mass_volume;
+
+    std::cout << "target max sigma: " << target_max_sigma << std::endl;
 
     // scene config
     auto  config = Scene::default_config();
@@ -273,8 +276,8 @@ void astm_loading_scene() {
     // glass mesh
     vector<Vector3> glass_Vs;
     vector<Vector4i> glass_Ts;
-    SimplicialComplex glass_mesh = box(Vector3{Lg, d, b}, Vector3i{50, 6, 10}, glass_Vs, glass_Ts);
-    //SimplicialComplex glass_mesh = box(Vector3{Lg, d, b}, Vector3i{25, 4, 5}, glass_Vs, glass_Ts);
+    SimplicialComplex glass_mesh = box(Vector3{Lg, d, b}, Vector3i{75, 20, 15}, glass_Vs, glass_Ts);
+    //SimplicialComplex glass_mesh = box(Vector3{Lg, d, b}, Vector3i{50, 8, 10}, glass_Vs, glass_Ts);
     //SimplicialComplex glass_mesh = box(Vector3{Lg * 3, d * 3, b * 3}, Vector3i{25 * 3, 4 * 3, 5 * 3}, glass_Vs, glass_Ts);
     default_element.apply_to(glass_mesh);
     label_surface(glass_mesh);
@@ -290,9 +293,9 @@ void astm_loading_scene() {
 
     // precompute info for stress calculation
     vector<Matrix3x3> Dm_invs;
-    Dm_invs.reserve(cylinder_Ts.size());
-    for (auto tet : cylinder_Ts) {
-        Dm_invs.push_back(Dm_inv(cylinder_Vs[tet(0)], cylinder_Vs[tet(1)], cylinder_Vs[tet(2)], cylinder_Vs[tet(3)]));
+    Dm_invs.reserve(glass_Ts.size());
+    for (auto tet : glass_Ts) {
+        Dm_invs.push_back(Dm_inv(glass_Vs[tet(0)], glass_Vs[tet(1)], glass_Vs[tet(2)], glass_Vs[tet(3)]));
     }
 
     // place the meshes in the scene
@@ -348,7 +351,7 @@ void astm_loading_scene() {
         auto is_fixed = bottom_left_loading_point_mesh.instances().find<IndexT>(builtin::is_fixed);
         view(*is_fixed)[0] = 1;
     }
-    auto bottom_left_loading_point_object = scene.objects().create("bottom_left_loading_pooint");
+    auto bottom_left_loading_point_object = scene.objects().create("bottom_left_loading_point");
     bottom_left_loading_point_object->geometries().create(bottom_left_loading_point_mesh);
 
     // bottom right loading point
@@ -362,7 +365,7 @@ void astm_loading_scene() {
         auto is_fixed = bottom_right_loading_point_mesh.instances().find<IndexT>(builtin::is_fixed);
         view(*is_fixed)[0] = 1;
     }
-    auto bottom_right_loading_point_object = scene.objects().create("bottom_right_loading_pooint");
+    auto bottom_right_loading_point_object = scene.objects().create("bottom_right_loading_point");
     bottom_right_loading_point_object->geometries().create(bottom_right_loading_point_mesh);
 
 
@@ -374,7 +377,7 @@ void astm_loading_scene() {
     auto mesh = scene.geometries().find(glass_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
     auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
     auto stress = calculate_cauchy_stress(glass_Vs, glass_Ts, moduli, Dm_invs, currentVs);
-    write_ply(glass_Vs, glass_Ts, stress, fmt::format("{}astm_loading_scene/tet_face_mesh{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(glass_Vs, glass_Ts, stress, fmt::format("{}astm_loading_scene/tet_face_mesh{}.ply", this_output_path, 0));
 
     sio.write_surface(fmt::format("{}astm_loading_scene/scene_surface{}.obj", this_output_path, 0));
 
@@ -392,7 +395,8 @@ void astm_loading_scene() {
 
         auto stress = calculate_cauchy_stress(glass_Vs, glass_Ts, moduli, Dm_invs, currentVs);
         //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
-        write_ply(glass_Vs, glass_Ts, stress, fmt::format("{}astm_loading_scene/tet_face_mesh{}.ply", this_output_path, i));
+        write_ply_face_stress(glass_Vs, glass_Ts, stress, fmt::format("{}astm_loading_scene/tet_face_mesh_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(glass_Vs, glass_Ts, stress, fmt::format("{}astm_loading_scene/tet_face_mesh_vertex{}.ply", this_output_path, i));
     }
 }
 

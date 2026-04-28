@@ -25,7 +25,6 @@ void faces(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, vector
     }
 
     // step 2: for each face of each tetrahedra, find its neighbors and insert a face if needed
-    SizeT num_tets = Ts.size();
     Fs = vector<Vector3i>();
     sides = vector<Vector2i>();
 
@@ -63,7 +62,31 @@ void faces(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, vector
     }
 }
 
-void write_ply(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, const span<const Matrix3x3> &stress, string filename) {
+void distribute_stress(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, const span<const Matrix3x3> &stress, vector<Matrix3x3> &vertex_stress) {
+    // step 1: map vertices to all neighboring tetrahedra
+    vector<vector<SizeT>> vertex_tet_map(Vs.size());
+
+    for (SizeT i = 0; i < Ts.size(); i++) {
+        vertex_tet_map[Ts[i].x()].push_back(i);
+        vertex_tet_map[Ts[i].y()].push_back(i);
+        vertex_tet_map[Ts[i].z()].push_back(i);
+        vertex_tet_map[Ts[i].w()].push_back(i);
+    }
+
+    // step 2: average stress at each vertex
+    vertex_stress = vector<Matrix3x3>(Vs.size());
+
+    for (SizeT i = 0; i < Vs.size(); i++) {
+        Matrix3x3 result = Matrix3x3::Zero();
+        for (auto tet : vertex_tet_map[i]) {
+            result += stress[tet];
+        }
+        result /= vertex_tet_map[i].size();
+        vertex_stress[i] = result;
+    }
+}
+
+void write_ply_face_stress(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, const span<const Matrix3x3> &stress, string filename) {
     std::ofstream file(filename);
 
     vector<Vector3i> Fs;
@@ -120,6 +143,55 @@ void write_ply(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, co
             << sigma_ext(1, 2) << " " << sigma_ext(0, 2) << " " << sigma_ext(0, 1) << " "
             << sigma_int(0, 0) << " " << sigma_int(1, 1) << " " << sigma_int(2, 2) << " "
             << sigma_int(1, 2) << " " << sigma_int(0, 2) << " " << sigma_int(0, 1) << std::endl;
+    }
+
+    file.close();
+}
+
+void write_ply_vertex_stress(const span<const Vector3> &Vs, const span<const Vector4i> &Ts, const span<const Matrix3x3> &stress, string filename) {
+    std::ofstream file(filename);
+
+    vector<Vector3i> Fs;
+    vector<Vector2i> sides;
+    vector<Matrix3x3> vertex_stress;
+    faces(Vs, Ts, Fs, sides);
+    distribute_stress(Vs, Ts, stress, vertex_stress);
+
+    // header
+    file
+    << "ply\nformat ascii 1.0\n"
+    << "element vertex " << Vs.size() << "\n"
+    << "property float x\n"
+    << "property float y\n"
+    << "property float z\n"
+    << "property float sigma_normal_x\n"
+    << "property float sigma_normal_y\n"
+    << "property float sigma_normal_z\n"
+    << "property float sigma_tangent_x\n"
+    << "property float sigma_tangent_y\n"
+    << "property float sigma_tangent_z\n"
+    << "element face " << Fs.size() <<"\n"
+    << "property list uchar uint vertex_indices\n"
+    << "property uchar external_face_state_x\n"
+    << "comment tet " << Ts.size() << "\n"
+    << "end_header" << std::endl;
+
+    // data
+    // vertices
+    for (SizeT i = 0; i < Vs.size(); i++) {
+        Matrix3x3 sigma = vertex_stress[i];
+
+        file << Vs[i].x() << " " << Vs[i].y() << " " << Vs[i].z() << " "
+        << sigma(0, 0) << " " << sigma(1, 1) << " " << sigma(2, 2) << " "
+        << sigma(1, 2) << " " << sigma(0, 2) << " " << sigma(0, 1) << std::endl;
+    }
+
+    // faces
+    for (SizeT i = 0; i < Fs.size(); i++) {
+        bool external_face = sides[i].x() == -1 || sides[i].y() == -1;
+
+        file << "3 " << Fs[i].x() << " " << Fs[i].y() << " " << Fs[i].z() << " "
+            << (external_face ? (sides[i].x() == -1 ? 1 : 2) : 0) << std::endl;
     }
 
     file.close();

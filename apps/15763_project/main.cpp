@@ -41,7 +41,7 @@ void cylinder_scene() {
     auto default_element = scene.contact_tabular().default_element();
 
     // setup a base mesh to reduce the later work
-    SimplicialComplex base_mesh = cylinder(0.5, 1, 10, 20, Vs, Ts);
+    SimplicialComplex base_mesh = cylinder(0.5, 1, 20, 40, Vs, Ts);
     // apply the default contact model to the base mesh
     default_element.apply_to(base_mesh);
 
@@ -95,9 +95,10 @@ void cylinder_scene() {
     auto mesh = scene.geometries().find(0).geometry->geometry().as<SimplicialComplex>();
     auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
     auto stress = calculate_cauchy_stress(Vs, Ts, moduli, Dm_invs, currentVs);
-    write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}tet_face_mesh{}.ply", this_output_path, 0));
+    write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}high_res_cylinder_scene/cylinder_face{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(currentVs, Ts, stress, fmt::format("{}high_res_cylinder_scene/cylinder_vertex{}.ply", this_output_path, 0));
 
-    sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, 0));
+    sio.write_surface(fmt::format("{}high_res_cylinder_scene/scene_surface{}.obj", this_output_path, 0));
 
     for(int i = 1; i < 200; i++)
     {
@@ -105,7 +106,7 @@ void cylinder_scene() {
         world.sync();
         world.retrieve();
 
-        sio.write_surface(fmt::format("{}scene_surface{}.obj", this_output_path, i));
+        sio.write_surface(fmt::format("{}high_res_cylinder_scene/scene_surface{}.obj", this_output_path, i));
         
         //scene.geometries().find(0).vertices().find<Vector3>(builtin::position)->view();
         auto mesh = scene.geometries().find(0).geometry->geometry().as<SimplicialComplex>();
@@ -113,7 +114,8 @@ void cylinder_scene() {
 
         auto stress = calculate_cauchy_stress(Vs, Ts, moduli, Dm_invs, currentVs);
         //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
-        write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}tet_face_mesh{}.ply", this_output_path, i));
+        write_ply_face_stress(currentVs, Ts, stress, fmt::format("{}high_res_cylinder_scene/cylinder_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(currentVs, Ts, stress, fmt::format("{}high_res_cylinder_scene/cylinder_vertex{}.ply", this_output_path, i));
     }
 }
 
@@ -471,19 +473,18 @@ void table_scene() {
     label_surface(cube_mesh);
     label_triangle_orient(cube_mesh);
 
-    // ground
-    // vector<Vector3> ground_Vs;
-    // vector<Vector4i> ground_Ts;
-    // auto ground_mesh = box(Vector3{10, 1, 10}, Vector3i{1, 1, 1}, ground_Vs, ground_Ts);
-    // label_surface(ground_mesh);
-    // label_triangle_orient(ground_mesh);
-
     // precompute info for stress calculation
-    // vector<Matrix3x3> Dm_invs;
-    // Dm_invs.reserve(glass_Ts.size());
-    // for (auto tet : glass_Ts) {
-    //     Dm_invs.push_back(Dm_inv(glass_Vs[tet(0)], glass_Vs[tet(1)], glass_Vs[tet(2)], glass_Vs[tet(3)]));
-    // }
+    vector<Matrix3x3> leg_Dm_invs;
+    leg_Dm_invs.reserve(leg_Ts.size());
+    for (auto tet : leg_Ts) {
+        leg_Dm_invs.push_back(Dm_inv(leg_Vs[tet(0)], leg_Vs[tet(1)], leg_Vs[tet(2)], leg_Vs[tet(3)]));
+    }
+
+    vector<Matrix3x3> tabletop_Dm_invs;
+    tabletop_Dm_invs.reserve(tabletop_Ts.size());
+    for (auto tet : tabletop_Ts) {
+        tabletop_Dm_invs.push_back(Dm_inv(tabletop_Vs[tet(0)], tabletop_Vs[tet(1)], tabletop_Vs[tet(2)], tabletop_Vs[tet(3)]));
+    }
 
     // place the meshes in the scene
     // back left table leg
@@ -555,14 +556,8 @@ void table_scene() {
     cube_object->geometries().create(cube_mesh);
 
     // ground
-    // {
-    //     Transform t = Transform::Identity();
-    //     t.translate(Vector3{0, -0.5, 0});
-    //     view(ground_mesh.transforms())[0] = t.matrix();
-    // }
     auto ground_object = scene.objects().create("ground");
     ground_object->geometries().create(ground(0));
-    //ground_object->geometries().create(ground_mesh);
 
 
     // initialize the scene
@@ -570,10 +565,40 @@ void table_scene() {
     SceneIO sio{scene};
     auto this_output_path = AssetDir::output_path(UIPC_RELATIVE_SOURCE_FILE);
 
-    //auto mesh = scene.geometries().find(glass_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
-    //auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
-    //auto stress = calculate_cauchy_stress(glass_Vs, glass_Ts, moduli, Dm_invs, currentVs);
-    //write_ply_vertex_stress(glass_Vs, glass_Ts, stress, fmt::format("{}table_scene/tet_face_mesh{}.ply", this_output_path, 0));
+    auto mesh = scene.geometries().find(bl_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    auto stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+    write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/bl_leg_face{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/bl_leg_vertex{}.ply", this_output_path, 0));
+
+    mesh = scene.geometries().find(br_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+    write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/br_leg_face{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/br_leg_vertex{}.ply", this_output_path, 0));
+
+    mesh = scene.geometries().find(fl_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+    write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fl_leg_face{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fl_leg_vertex{}.ply", this_output_path, 0));
+
+    mesh = scene.geometries().find(fr_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+    write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fr_leg_face{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fr_leg_vertex{}.ply", this_output_path, 0));
+
+    mesh = scene.geometries().find(tabletop_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    stress = calculate_cauchy_stress(tabletop_Vs, tabletop_Ts, tabletop_moduli, tabletop_Dm_invs, currentVs);
+    write_ply_face_stress(currentVs, tabletop_Ts, stress, fmt::format("{}table_scene/tabletop_face{}.ply", this_output_path, 0));
+    write_ply_vertex_stress(currentVs, tabletop_Ts, stress, fmt::format("{}table_scene/tabletop_vertex{}.ply", this_output_path, 0));
+
+    mesh = scene.geometries().find(cube_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+    currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+    stress = calculate_cauchy_stress(cube_Vs, cube_Ts, tabletop_moduli, tabletop_Dm_invs, currentVs);
+    write_ply_face_stress(currentVs, cube_Ts, stress, fmt::format("{}table_scene/cube{}.ply", this_output_path, 0));
 
     sio.write_surface(fmt::format("{}table_scene/scene_surface{}.obj", this_output_path, 0));
 
@@ -584,20 +609,46 @@ void table_scene() {
         world.retrieve();
 
         sio.write_surface(fmt::format("{}table_scene/scene_surface{}.obj", this_output_path, i));
-        
-        //scene.geometries().find(0).vertices().find<Vector3>(builtin::position)->view();
-        //auto mesh = scene.geometries().find(0).geometry->geometry().as<SimplicialComplex>();
-        //auto currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
 
-        //auto stress = calculate_cauchy_stress(glass_Vs, glass_Ts, moduli, Dm_invs, currentVs);
-        //write_cauchy_stress_csv(stress, fmt::format("{}stress{}.csv", this_output_path, i));
-        //write_ply_face_stress(glass_Vs, glass_Ts, stress, fmt::format("{}table_scene/tet_face_mesh_face{}.ply", this_output_path, i));
-        //write_ply_vertex_stress(glass_Vs, glass_Ts, stress, fmt::format("{}table_scene/tet_face_mesh_vertex{}.ply", this_output_path, i));
+        mesh = scene.geometries().find(bl_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+        currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+        stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+        write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/bl_leg_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/bl_leg_vertex{}.ply", this_output_path, i));
+
+        mesh = scene.geometries().find(br_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+        currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+        stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+        write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/br_leg_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/br_leg_vertex{}.ply", this_output_path, i));
+
+        mesh = scene.geometries().find(fl_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+        currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+        stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+        write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fl_leg_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fl_leg_vertex{}.ply", this_output_path, i));
+
+        mesh = scene.geometries().find(fr_leg_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+        currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+        stress = calculate_cauchy_stress(leg_Vs, leg_Ts, leg_moduli, leg_Dm_invs, currentVs);
+        write_ply_face_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fr_leg_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(currentVs, leg_Ts, stress, fmt::format("{}table_scene/fr_leg_vertex{}.ply", this_output_path, i));
+
+        mesh = scene.geometries().find(tabletop_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+        currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+        stress = calculate_cauchy_stress(tabletop_Vs, tabletop_Ts, tabletop_moduli, tabletop_Dm_invs, currentVs);
+        write_ply_face_stress(currentVs, tabletop_Ts, stress, fmt::format("{}table_scene/tabletop_face{}.ply", this_output_path, i));
+        write_ply_vertex_stress(currentVs, tabletop_Ts, stress, fmt::format("{}table_scene/tabletop_vertex{}.ply", this_output_path, i));
+
+        mesh = scene.geometries().find(cube_object->geometries().ids()[0]).geometry->geometry().as<SimplicialComplex>();
+        currentVs = mesh->vertices().find<Vector3>(builtin::position)->view();
+        stress = calculate_cauchy_stress(cube_Vs, cube_Ts, tabletop_moduli, tabletop_Dm_invs, currentVs);
+        write_ply_face_stress(currentVs, cube_Ts, stress, fmt::format("{}table_scene/cube{}.ply", this_output_path, i));
     }
 }
 
 int main() {
-    table_scene();
+    cylinder_scene();
 
     return 0;
 }

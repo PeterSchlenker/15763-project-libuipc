@@ -134,7 +134,7 @@ void write_ply_face_stress(const span<const Vector3> &Vs, const span<const Vecto
         }
         Matrix3x3 sigma_int = Matrix3x3::Zero();
         if (sides[i].y() != -1) {
-            sigma_int = stress[sides[i].x()];
+            sigma_int = stress[sides[i].y()];
         }
 
         file << "3 " << Fs[i].x() << " " << Fs[i].y() << " " << Fs[i].z() << " "
